@@ -1,14 +1,859 @@
 <!DOCTYPE html>
-  <html lang="ru">
-  <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>B24 Invoice Parser</title>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Разбор банковской выписки</title>
   <script src="https://api.bitrix24.com/api/v1/"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #0f1117;
+      color: #e4e4e7;
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    .app-header {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+
+    .app-header h1 {
+      font-size: 24px;
+      font-weight: 700;
+      background: linear-gradient(135deg, #6366f1, #a855f7, #ec4899);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 6px;
+    }
+
+    .app-header p {
+      color: #71717a;
+      font-size: 13px;
+    }
+
+    /* ===== Drop Zone ===== */
+    .drop-zone {
+      border: 2px dashed #3f3f46;
+      border-radius: 16px;
+      padding: 48px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      background: rgba(24, 24, 27, 0.6);
+      backdrop-filter: blur(12px);
+      margin-bottom: 24px;
+    }
+
+    .drop-zone:hover, .drop-zone.drag-over {
+      border-color: #6366f1;
+      background: rgba(99, 102, 241, 0.08);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 32px rgba(99, 102, 241, 0.15);
+    }
+
+    .drop-zone .icon {
+      font-size: 48px;
+      margin-bottom: 12px;
+      display: block;
+    }
+
+    .drop-zone .text {
+      font-size: 15px;
+      font-weight: 500;
+      color: #a1a1aa;
+    }
+
+    .drop-zone .text span {
+      color: #818cf8;
+      text-decoration: underline;
+    }
+
+    .file-info {
+      display: none;
+      background: rgba(99, 102, 241, 0.1);
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      border-radius: 12px;
+      padding: 16px 20px;
+      margin-bottom: 24px;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .file-info.visible { display: flex; }
+
+    .file-info .file-name {
+      flex: 1;
+      font-weight: 500;
+      font-size: 14px;
+    }
+
+    .file-info .file-size {
+      color: #71717a;
+      font-size: 12px;
+    }
+
+    /* ===== Настройки ===== */
+    .settings-panel {
+      background: rgba(24, 24, 27, 0.6);
+      border: 1px solid #27272a;
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 24px;
+      display: none;
+    }
+
+    .settings-panel.visible { display: block; }
+
+    .settings-panel h3 {
+      font-size: 14px;
+      font-weight: 600;
+      color: #a1a1aa;
+      margin-bottom: 16px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .setting-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .setting-row label {
+      font-size: 13px;
+      color: #d4d4d8;
+      min-width: 200px;
+    }
+
+    .setting-row select, .setting-row input {
+      flex: 1;
+      background: #18181b;
+      border: 1px solid #3f3f46;
+      border-radius: 8px;
+      padding: 8px 12px;
+      color: #e4e4e7;
+      font-size: 13px;
+      font-family: 'Inter', sans-serif;
+    }
+
+    /* ===== Кнопка ===== */
+    .btn-start {
+      display: none;
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: 600;
+      font-family: 'Inter', sans-serif;
+      cursor: pointer;
+      background: linear-gradient(135deg, #6366f1, #a855f7);
+      color: white;
+      transition: all 0.3s ease;
+      margin-bottom: 24px;
+    }
+
+    .btn-start.visible { display: block; }
+
+    .btn-start:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(99, 102, 241, 0.35);
+    }
+
+    .btn-start:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    /* ===== Прогресс ===== */
+    .progress-section {
+      display: none;
+      margin-bottom: 24px;
+    }
+
+    .progress-section.visible { display: block; }
+
+    .progress-bar-container {
+      background: #27272a;
+      border-radius: 8px;
+      height: 8px;
+      overflow: hidden;
+      margin-bottom: 8px;
+    }
+
+    .progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, #6366f1, #a855f7);
+      border-radius: 8px;
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+
+    .progress-text {
+      font-size: 12px;
+      color: #71717a;
+      text-align: right;
+    }
+
+    /* ===== Статистика ===== */
+    .stats {
+      display: none;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .stats.visible { display: grid; }
+
+    .stat-card {
+      background: rgba(24, 24, 27, 0.8);
+      border: 1px solid #27272a;
+      border-radius: 12px;
+      padding: 16px;
+      text-align: center;
+    }
+
+    .stat-card .number {
+      font-size: 28px;
+      font-weight: 700;
+    }
+
+    .stat-card .label {
+      font-size: 11px;
+      color: #71717a;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-top: 4px;
+    }
+
+    .stat-card.success .number { color: #34d399; }
+    .stat-card.partial .number { color: #fbbf24; }
+    .stat-card.error .number { color: #f87171; }
+    .stat-card.total .number { color: #818cf8; }
+
+    /* ===== Лог ===== */
+    .log-section {
+      display: none;
+      background: rgba(24, 24, 27, 0.6);
+      border: 1px solid #27272a;
+      border-radius: 16px;
+      overflow: hidden;
+    }
+
+    .log-section.visible { display: block; }
+
+    .log-header {
+      padding: 14px 20px;
+      border-bottom: 1px solid #27272a;
+      font-size: 13px;
+      font-weight: 600;
+      color: #a1a1aa;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .log-body {
+      max-height: 400px;
+      overflow-y: auto;
+      padding: 12px 20px;
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      font-size: 12px;
+      line-height: 1.8;
+    }
+
+    .log-body::-webkit-scrollbar { width: 6px; }
+    .log-body::-webkit-scrollbar-track { background: transparent; }
+    .log-body::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 3px; }
+
+    .log-line { padding: 2px 0; }
+    .log-line.success { color: #34d399; }
+    .log-line.error { color: #f87171; }
+    .log-line.warn { color: #fbbf24; }
+    .log-line.info { color: #818cf8; }
+    .log-line.dim { color: #52525b; }
+
+    .hidden-input { display: none; }
+
+    /* ===== Preview Table ===== */
+    .preview-section {
+      display: none;
+      margin-bottom: 24px;
+    }
+
+    .preview-section.visible { display: block; }
+
+    .preview-section h3 {
+      font-size: 14px;
+      font-weight: 600;
+      color: #a1a1aa;
+      margin-bottom: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .preview-table-wrap {
+      overflow-x: auto;
+      border: 1px solid #27272a;
+      border-radius: 12px;
+    }
+
+    .preview-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    .preview-table th {
+      background: #18181b;
+      padding: 10px 12px;
+      text-align: left;
+      font-weight: 600;
+      color: #a1a1aa;
+      border-bottom: 1px solid #27272a;
+      white-space: nowrap;
+    }
+
+    .preview-table td {
+      padding: 8px 12px;
+      border-bottom: 1px solid #1e1e22;
+      color: #d4d4d8;
+    }
+
+    .preview-table tr:hover td { background: rgba(99, 102, 241, 0.05); }
+
+    .tag {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .tag.found { background: rgba(52, 211, 153, 0.15); color: #34d399; }
+    .tag.not-found { background: rgba(248, 113, 113, 0.15); color: #f87171; }
+  </style>
 </head>
 <body>
-<h1>B24 Invoice Parser</h1>
-<p>Loading...</p>
+
+  <div class="app-header">
+    <h1>💳 Разбор банковской выписки</h1>
+    <p>Загрузите CSV-файл выписки из банка. Система автоматически найдет счета и проставит оплату.</p>
+  </div>
+
+  <input type="file" id="fileInput" class="hidden-input" accept=".csv,.txt">
+
+  <div class="drop-zone" id="dropZone">
+    <span class="icon">📂</span>
+    <div class="text">Перетащите CSV-файл сюда или <span>нажмите для выбора</span></div>
+  </div>
+
+  <div class="file-info" id="fileInfo">
+    <span>📄</span>
+    <span class="file-name" id="fileName"></span>
+    <span class="file-size" id="fileSize"></span>
+  </div>
+
+  <div class="settings-panel" id="settingsPanel">
+    <h3>⚙️ Настройки разбора</h3>
+    <div class="setting-row">
+      <label>Колонка "Назначение платежа":</label>
+      <select id="colPurpose"></select>
+    </div>
+    <div class="setting-row">
+      <label>Колонка "Сумма":</label>
+      <select id="colAmount"></select>
+    </div>
+    <div class="setting-row">
+      <label>Колонка "ИНН плательщика":</label>
+      <select id="colInn"></select>
+    </div>
+    <div class="setting-row">
+      <label>Колонка "Дата операции":</label>
+      <select id="colDate"></select>
+    </div>
+  </div>
+
+  <button class="btn-start" id="btnStart">🚀 Начать разбор выписки</button>
+
+  <div class="preview-section" id="previewSection">
+    <h3>📋 Предпросмотр (первые 5 строк)</h3>
+    <div class="preview-table-wrap">
+      <table class="preview-table" id="previewTable"></table>
+    </div>
+  </div>
+
+  <div class="progress-section" id="progressSection">
+    <div class="progress-bar-container">
+      <div class="progress-bar" id="progressBar"></div>
+    </div>
+    <div class="progress-text" id="progressText">0%</div>
+  </div>
+
+  <div class="stats" id="stats">
+    <div class="stat-card total">
+      <div class="number" id="statTotal">0</div>
+      <div class="label">Всего строк</div>
+    </div>
+    <div class="stat-card success">
+      <div class="number" id="statSuccess">0</div>
+      <div class="label">Оплачено</div>
+    </div>
+    <div class="stat-card partial">
+      <div class="number" id="statPartial">0</div>
+      <div class="label">Частичная</div>
+    </div>
+    <div class="stat-card error">
+      <div class="number" id="statNotFound">0</div>
+      <div class="label">Не найдено</div>
+    </div>
+  </div>
+
+  <div class="log-section" id="logSection">
+    <div class="log-header">
+      <span>📝 Лог операций</span>
+      <span id="logCount">0 записей</span>
+    </div>
+    <div class="log-body" id="logBody"></div>
+  </div>
+
+  <script>
+    // ============================================
+    // КОНФИГУРАЦИЯ (вытащена разведкой из Б24)
+    // ============================================
+    const CONFIG = {
+      ENTITY_TYPE_ID: 31,                                      // Смарт-процесс "Счета"
+      FIELD_PAYMENT_SUM: 'ufCrm_SMART_INVOICE_1706522704132',  // "Сумма оплаты по счету"
+      FIELD_INVOICE_NUM_BUH: 'ufCrm_65B7778102349',            // "Номер счета (Бух)"
+      FIELD_INVOICE_NUM: 'ufCrm_65C094A92B784',                // "Номер счета"
+      STAGE_SUCCESS: 'DT31_6:P',                               // Стадия "Оплачен" (успех)
+    };
+
+    // ============================================
+    // СОСТОЯНИЕ
+    // ============================================
+    let parsedData = [];
+    let csvHeaders = [];
+    let stats = { total: 0, success: 0, partial: 0, notFound: 0 };
+    let logLines = 0;
+
+    // ============================================
+    // UI ЭЛЕМЕНТЫ
+    // ============================================
+    const $ = id => document.getElementById(id);
+
+    const dropZone = $('dropZone');
+    const fileInput = $('fileInput');
+    const fileInfo = $('fileInfo');
+    const settingsPanel = $('settingsPanel');
+    const btnStart = $('btnStart');
+    const progressSection = $('progressSection');
+    const progressBar = $('progressBar');
+    const progressText = $('progressText');
+    const statsEl = $('stats');
+    const logSection = $('logSection');
+    const logBody = $('logBody');
+    const previewSection = $('previewSection');
+
+    // ============================================
+    // DRAG & DROP + FILE INPUT
+    // ============================================
+    dropZone.addEventListener('click', () => fileInput.click());
+
+    dropZone.addEventListener('dragover', e => {
+      e.preventDefault();
+      dropZone.classList.add('drag-over');
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.classList.remove('drag-over');
+    });
+
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZone.classList.remove('drag-over');
+      if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+    });
+
+    fileInput.addEventListener('change', e => {
+      if (e.target.files.length) handleFile(e.target.files[0]);
+    });
+
+    // ============================================
+    // ОБРАБОТКА ФАЙЛА
+    // ============================================
+    function handleFile(file) {
+      if (!file.name.endsWith('.csv') && !file.name.endsWith('.txt')) {
+        alert('Пожалуйста, загрузите файл формата .csv или .txt');
+        return;
+      }
+
+      $('fileName').textContent = file.name;
+      $('fileSize').textContent = formatSize(file.size);
+      fileInfo.classList.add('visible');
+
+      // Пробуем разные кодировки
+      const reader = new FileReader();
+      reader.onload = e => {
+        let text = e.target.result;
+        
+        Papa.parse(text, {
+          header: true,
+          skipEmptyLines: true,
+          delimiter: ';',  // Банковские CSV обычно через ;
+          complete: result => {
+            if (!result.data.length) {
+              // Пробуем через запятую
+              Papa.parse(text, {
+                header: true,
+                skipEmptyLines: true,
+                delimiter: ',',
+                complete: result2 => {
+                  if (result2.data.length && Object.keys(result2.data[0]).length > 1) {
+                    onParsed(result2);
+                  } else {
+                    alert('Не удалось распарсить CSV. Проверьте формат файла.');
+                  }
+                }
+              });
+            } else if (Object.keys(result.data[0]).length <= 1) {
+              // Один столбец — значит разделитель неверный
+              Papa.parse(text, {
+                header: true,
+                skipEmptyLines: true,
+                delimiter: ',',
+                complete: onParsed
+              });
+            } else {
+              onParsed(result);
+            }
+          }
+        });
+      };
+      reader.readAsText(file, 'windows-1251'); // Банковские файлы обычно в win-1251
+    }
+
+    function onParsed(result) {
+      parsedData = result.data;
+      csvHeaders = result.meta.fields || [];
+
+      log('info', `📊 Файл загружен. Найдено ${parsedData.length} строк, ${csvHeaders.length} колонок.`);
+
+      // Заполняем селекты настроек
+      populateSelects();
+
+      // Предпросмотр
+      showPreview();
+
+      settingsPanel.classList.add('visible');
+      btnStart.classList.add('visible');
+    }
+
+    function populateSelects() {
+      const selects = ['colPurpose', 'colAmount', 'colInn', 'colDate'];
+      const hints = {
+        colPurpose: ['назначен', 'purpose', 'описание', 'основание'],
+        colAmount: ['сумма', 'amount', 'sum', 'кредит'],
+        colInn: ['инн', 'inn', 'ИНН'],
+        colDate: ['дата', 'date', 'число']
+      };
+
+      for (const selId of selects) {
+        const sel = $(selId);
+        sel.innerHTML = '<option value="">— не выбрано —</option>';
+        for (const h of csvHeaders) {
+          const opt = document.createElement('option');
+          opt.value = h;
+          opt.textContent = h;
+          sel.appendChild(opt);
+        }
+
+        // Автоподбор по ключевым словам
+        const keywords = hints[selId];
+        for (const h of csvHeaders) {
+          const hl = h.toLowerCase();
+          if (keywords.some(k => hl.includes(k))) {
+            sel.value = h;
+            break;
+          }
+        }
+      }
+    }
+
+    function showPreview() {
+      const table = $('previewTable');
+      let html = '<thead><tr>';
+      for (const h of csvHeaders) html += `<th>${h}</th>`;
+      html += '</tr></thead><tbody>';
+      for (let i = 0; i < Math.min(5, parsedData.length); i++) {
+        html += '<tr>';
+        for (const h of csvHeaders) {
+          let val = parsedData[i][h] || '';
+          if (val.length > 60) val = val.substring(0, 60) + '…';
+          html += `<td>${val}</td>`;
+        }
+        html += '</tr>';
+      }
+      html += '</tbody>';
+      table.innerHTML = html;
+      previewSection.classList.add('visible');
+    }
+
+    // ============================================
+    // ОСНОВНАЯ ЛОГИКА
+    // ============================================
+    btnStart.addEventListener('click', async () => {
+      const colPurpose = $('colPurpose').value;
+      const colAmount = $('colAmount').value;
+
+      if (!colPurpose) { alert('Выберите колонку "Назначение платежа"!'); return; }
+      if (!colAmount) { alert('Выберите колонку "Сумма"!'); return; }
+
+      btnStart.disabled = true;
+      btnStart.textContent = '⏳ Идет обработка...';
+      progressSection.classList.add('visible');
+      statsEl.classList.add('visible');
+      logSection.classList.add('visible');
+
+      stats = { total: parsedData.length, success: 0, partial: 0, notFound: 0 };
+      updateStats();
+
+      const colDate = $('colDate').value;
+      const colInn = $('colInn').value;
+
+      for (let i = 0; i < parsedData.length; i++) {
+        const row = parsedData[i];
+        const purpose = row[colPurpose] || '';
+        const amountStr = (row[colAmount] || '').replace(/\s/g, '').replace(',', '.');
+        const amount = parseFloat(amountStr);
+        const dateStr = colDate ? row[colDate] : '';
+        const inn = colInn ? row[colInn] : '';
+
+        // Обновляем прогресс
+        const pct = Math.round(((i + 1) / parsedData.length) * 100);
+        progressBar.style.width = pct + '%';
+        progressText.textContent = `${i + 1} из ${parsedData.length} (${pct}%)`;
+
+        if (!purpose || isNaN(amount) || amount <= 0) {
+          log('dim', `⏩ Строка ${i + 1}: пропущена (пустое назначение или нулевая сумма)`);
+          continue;
+        }
+
+        // Парсим номер счета из назначения платежа
+        const invoiceNum = extractInvoiceNumber(purpose);
+
+        if (!invoiceNum) {
+          log('warn', `⚠️ Строка ${i + 1}: не удалось извлечь номер счета из "${purpose.substring(0, 80)}..."`);
+          stats.notFound++;
+          updateStats();
+          continue;
+        }
+
+        log('info', `🔍 Строка ${i + 1}: Ищем счет №${invoiceNum}, сумма ${amount}₽` + (inn ? `, ИНН ${inn}` : ''));
+
+        try {
+          // Ищем счет в Битрикс24
+          const invoice = await findInvoice(invoiceNum);
+
+          if (!invoice) {
+            log('error', `❌ Счет №${invoiceNum} не найден в Битрикс24`);
+            stats.notFound++;
+            updateStats();
+            continue;
+          }
+
+          log('info', `  📄 Найден: ID ${invoice.id} "${invoice.title}", сумма счета: ${invoice.opportunity}₽`);
+
+          // Обновляем счет
+          const updateFields = {};
+          updateFields[CONFIG.FIELD_PAYMENT_SUM] = amount;
+
+          // Дата оплаты пока не передается (нет поля)
+          // if (dateStr) {
+          //   const parsedDate = parseDate(dateStr);
+          //   if (parsedDate) {
+          //     // updateFields[CONFIG.FIELD_PAYMENT_DATE] = parsedDate;
+          //   }
+          // }
+
+          // Переводим в стадию "Успех"
+          updateFields.stageId = CONFIG.STAGE_SUCCESS;
+
+          await updateInvoice(invoice.id, updateFields);
+
+          if (amount >= invoice.opportunity) {
+            log('success', `  ✅ Счет №${invoiceNum} (ID ${invoice.id}) — ПОЛНАЯ ОПЛАТА ${amount}₽`);
+            stats.success++;
+          } else {
+            log('warn', `  ⚠️ Счет №${invoiceNum} (ID ${invoice.id}) — ЧАСТИЧНАЯ ОПЛАТА ${amount}₽ из ${invoice.opportunity}₽ (БП создаст доплату)`);
+            stats.partial++;
+          }
+
+          updateStats();
+
+        } catch (err) {
+          log('error', `  ❌ Ошибка при обработке счета №${invoiceNum}: ${err.message || err}`);
+          stats.notFound++;
+          updateStats();
+        }
+
+        // Маленькая задержка, чтобы не перегрузить API
+        await sleep(300);
+      }
+
+      log('success', `\n🎉 ГОТОВО! Успешно: ${stats.success}, Частичная оплата: ${stats.partial}, Не найдено: ${stats.notFound}`);
+      btnStart.textContent = '✅ Обработка завершена';
+    });
+
+    // ============================================
+    // ПАРСИНГ НОМЕРА СЧЕТА
+    // ============================================
+    function extractInvoiceNumber(text) {
+      // Паттерны для разных вариантов написания
+      const patterns = [
+        /(?:(?:по\s+)?(?:счет[уа]?|сч\.?|Ф-сч|ф-счет[уа]?)\s*(?:№|#|N)?\s*)(\d{3,8})/i,
+        /(?:(?:по\s+)?(?:счет[уа]?|сч\.?)\s+)(\d{3,8})/i,
+        /(?:№|#|N)\s*(\d{3,8})/i,
+        /(?:invoice\s*(?:№|#|N)?\s*)(\d{3,8})/i,
+        /(?:сч\.\s*)(\d{3,8})/i,
+      ];
+
+      for (const p of patterns) {
+        const m = text.match(p);
+        if (m) return m[1];
+      }
+
+      return null;
+    }
+
+    // ============================================
+    // BITRIX24 API
+    // ============================================
+    function findInvoice(invoiceNum) {
+      return new Promise((resolve, reject) => {
+        // Сначала ищем по полю "Номер счета (Бух)"
+        BX24.callMethod('crm.item.list', {
+          entityTypeId: CONFIG.ENTITY_TYPE_ID,
+          filter: { [CONFIG.FIELD_INVOICE_NUM_BUH]: invoiceNum },
+          select: ['id', 'title', 'opportunity', 'stageId', CONFIG.FIELD_INVOICE_NUM_BUH, CONFIG.FIELD_INVOICE_NUM]
+        }, result => {
+          if (result.error()) {
+            reject(new Error(result.error().ex.error));
+            return;
+          }
+          const items = result.data()?.items || [];
+          if (items.length > 0) {
+            resolve(items[0]);
+            return;
+          }
+
+          // Если не нашли по бух номеру — ищем по "Номер счета"
+          BX24.callMethod('crm.item.list', {
+            entityTypeId: CONFIG.ENTITY_TYPE_ID,
+            filter: { [CONFIG.FIELD_INVOICE_NUM]: invoiceNum },
+            select: ['id', 'title', 'opportunity', 'stageId']
+          }, result2 => {
+            if (result2.error()) {
+              reject(new Error(result2.error().ex.error));
+              return;
+            }
+            const items2 = result2.data()?.items || [];
+            if (items2.length > 0) {
+              resolve(items2[0]);
+              return;
+            }
+
+            // Пробуем поиск по accountNumber (системное поле)
+            BX24.callMethod('crm.item.list', {
+              entityTypeId: CONFIG.ENTITY_TYPE_ID,
+              filter: { accountNumber: invoiceNum },
+              select: ['id', 'title', 'opportunity', 'stageId']
+            }, result3 => {
+              if (result3.error()) {
+                reject(new Error(result3.error().ex.error));
+                return;
+              }
+              const items3 = result3.data()?.items || [];
+              resolve(items3.length > 0 ? items3[0] : null);
+            });
+          });
+        });
+      });
+    }
+
+    function updateInvoice(id, fields) {
+      return new Promise((resolve, reject) => {
+        BX24.callMethod('crm.item.update', {
+          entityTypeId: CONFIG.ENTITY_TYPE_ID,
+          id: id,
+          fields: fields
+        }, result => {
+          if (result.error()) {
+            reject(new Error(result.error().ex.error));
+            return;
+          }
+          resolve(result.data());
+        });
+      });
+    }
+
+    // ============================================
+    // УТИЛИТЫ
+    // ============================================
+    function log(type, text) {
+      const div = document.createElement('div');
+      div.className = `log-line ${type}`;
+      div.textContent = text;
+      logBody.appendChild(div);
+      logBody.scrollTop = logBody.scrollHeight;
+      logLines++;
+      $('logCount').textContent = logLines + ' записей';
+    }
+
+    function updateStats() {
+      $('statTotal').textContent = stats.total;
+      $('statSuccess').textContent = stats.success;
+      $('statPartial').textContent = stats.partial;
+      $('statNotFound').textContent = stats.notFound;
+    }
+
+    function formatSize(bytes) {
+      if (bytes < 1024) return bytes + ' Б';
+      if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' КБ';
+      return (bytes / 1048576).toFixed(1) + ' МБ';
+    }
+
+    function parseDate(str) {
+      // Пробуем ДД.ММ.ГГГГ
+      const m = str.match(/(\d{2})[.\/-](\d{2})[.\/-](\d{4})/);
+      if (m) return `${m[3]}-${m[2]}-${m[1]}T00:00:00+03:00`;
+      // Пробуем ГГГГ-ММ-ДД
+      const m2 = str.match(/(\d{4})-(\d{2})-(\d{2})/);
+      if (m2) return `${m2[1]}-${m2[2]}-${m2[3]}T00:00:00+03:00`;
+      return null;
+    }
+
+    function sleep(ms) {
+      return new Promise(r => setTimeout(r, ms));
+    }
+
+    // ============================================
+    // ИНИЦИАЛИЗАЦИЯ BX24
+    // ============================================
+    BX24.init(() => {
+      log('info', '✅ Приложение подключено к Битрикс24');
+      BX24.fitWindow();
+    });
+  </script>
 </body>
 </html>
